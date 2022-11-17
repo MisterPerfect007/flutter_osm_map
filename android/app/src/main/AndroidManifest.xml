@@ -1,7 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.example.google_maps">
    <application
-        android:label="google_maps"
+        android:label="OSM map"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

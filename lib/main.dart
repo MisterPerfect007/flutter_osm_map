@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 
 import 'package:flutter_osm_plugin/flutter_osm_plugin.dart';
-import 'package:geolocator/geolocator.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:get/get.dart';
+
+import 'utils.dart';
 
 void main() {
   runApp(const MyApp());
@@ -14,7 +15,7 @@ class MyApp extends StatelessWidget {
   // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    return GetMaterialApp(
       title: 'Flutter Demo',
       theme: ThemeData(
         primarySwatch: Colors.blue,
@@ -33,6 +34,11 @@ class TheMap extends StatefulWidget {
 
 class _TheMapState extends State<TheMap> {
   PositionPicker pickerStage = PositionPicker.p0;
+
+  //
+  GeoPoint? destination;
+  //
+  GeoPoint? lastUserPoint;
 
   final controller = MapController.customLayer(
     initMapWithUserPosition: false,
@@ -58,13 +64,6 @@ class _TheMapState extends State<TheMap> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      // await Future.delayed(const Duration(seconds: 3));
-      final point = await controller.myLocation();
-      await controller.goToLocation(point);
-      // controller.drawRoad(start, end)
-      // print(position);
-    });
   }
 
   @override
@@ -76,90 +75,28 @@ class _TheMapState extends State<TheMap> {
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
               FloatingActionButton(
+                backgroundColor: Colors.white,
                 onPressed: goToLocation,
-                child: const Icon(Icons.location_searching),
+                child: const Icon(
+                  Icons.location_searching,
+                  color: Colors.blue,
+                ),
               ),
               if (pickerStage == PositionPicker.p0)
-                ElevatedButton(
-                  onPressed: () async {
-                    setState(() {
-                      pickerStage = PositionPicker.start;
-                    });
-                    await controller.advancedPositionPicker();
-                  },
-                  child: const Text("Add Destination"),
-                ),
-              if (pickerStage == PositionPicker.start)
-                FloatingActionButton(
-                  backgroundColor: Colors.red,
-                  onPressed: () async {
-                    await controller.cancelAdvancedPositionPicker();
-                    setState(() {
-                      pickerStage = PositionPicker.p0;
-                    });
-                  },
-                  child: const Icon(Icons.cancel),
-                ),
-              if (pickerStage == PositionPicker.start)
-                FloatingActionButton(
-                  backgroundColor: Colors.green,
-                  onPressed: () async {
-                    GeoPoint p = await controller
-                        .getCurrentPositionAdvancedPositionPicker();
-                    await controller.addMarker(
-                      p,
-                      markerIcon: const MarkerIcon(
-                          icon: Icon(
-                        Icons.location_pin,
-                        color: Colors.red,
-                        size: 100,
-                      )),
-                    );
-                    print(p);
-                    setState(() {
-                      pickerStage = PositionPicker.end;
-                    });
-                  },
-                  child: const Text("Ok"),
-                ),
-              if (pickerStage == PositionPicker.end)
                 FloatingActionButton(
                   backgroundColor: Colors.blue,
                   onPressed: () async {
-                    GeoPoint p = await controller
-                        .getCurrentPositionAdvancedPositionPicker();
-                    await controller.removeMarker(p);
-                    await controller.addMarker(
-                      p,
-                      markerIcon: MarkerIcon(
-                        iconWidget: Container(
-                          decoration: BoxDecoration(
-                              color: Colors.blue.withOpacity(0.1),
-                              borderRadius: const BorderRadius.all(
-                                  Radius.circular(1000))),
-                          padding: const EdgeInsets.all(20),
-                          child: Container(
-                            decoration: BoxDecoration(
-                                color: Colors.blue.withOpacity(0.3),
-                                borderRadius: const BorderRadius.all(
-                                    Radius.circular(1000))),
-                            padding: const EdgeInsets.all(10),
-                            child: const Icon(
-                              Icons.location_on,
-                              size: 100,
-                              color: Colors.red,
-                            ),
-                          ),
-                        ),
-                      ),
-                    );
-                    print(p);
-                    /* setState(() {
-                      pickerStage = PositionPicker.end;
-                    }); */
+                    ////Show the picker
+                    await controller.advancedPositionPicker();
+                    await goToLocation();
+                    setState(() {
+                      pickerStage = PositionPicker.start;
+                    });
                   },
-                  child: const Icon(Icons.arrow_forward),
+                  child: const Icon(Icons.add),
                 ),
+              if (pickerStage == PositionPicker.start) fabPickerStart(),
+              if (pickerStage == PositionPicker.end) fabPickerEnd(),
             ],
           ),
         ),
@@ -201,14 +138,98 @@ class _TheMapState extends State<TheMap> {
               size: 56,
             ),
           )),
+          onMapIsReady: (p0) async {
+            await goToLocation();
+          },
         ));
   }
 
-  void goToLocation() async {
-    final point = await controller.myLocation();
+  FloatingActionButton fabPickerStart() {
+    return FloatingActionButton(
+      backgroundColor: Colors.green,
+      onPressed: () async {
+        ////Show the picker
+        GeoPoint p =
+            await controller.getCurrentPositionAdvancedPositionPicker();
+        //
+        setState(() {
+          destination = p;
+        });
+        /////road
+        final userP = await userLocation();
+        RoadInfo roadInfo = await controller
+            .drawRoad(
+          userP,
+          p,
+          roadType: RoadType.car,
+          roadOption: const RoadOption(
+            roadWidth: 10,
+            roadColor: Colors.blue,
+            showMarkerOfPOI: false,
+            zoomInto: true,
+          ),
+        )
+            .then((roadInfo) async {
+          if (roadInfo.distance != 0.0 && roadInfo.duration != 0.0) {
+            Get.snackbar(
+                "Distance: ${roadInfo.distance!.toStringAsFixed(2)} Km",
+                "Estimation de durée: ${roadInfo.duration} secondes",
+                duration: const Duration(seconds: 8));
+            await controller.addMarker(
+              p,
+              markerIcon: const MarkerIcon(
+                  icon: Icon(
+                Icons.location_pin,
+                color: Colors.red,
+                size: 80,
+              )),
+            );
+            setState(() {
+              pickerStage = PositionPicker.end;
+            });
+            await controller.setZoom(zoomLevel: 17);
+          } else {
+            setState(() {
+              pickerStage = PositionPicker.p0;
+            });
+            Get.snackbar(
+              "Error ",
+              "Vérifier votre connection à internet"
+            );
+          }
+          
+          return roadInfo;
+        });
+
+      },
+      child: const Icon(Icons.add_location),
+    );
+  }
+
+  FloatingActionButton fabPickerEnd() {
+    return FloatingActionButton(
+      backgroundColor: Colors.red,
+      onPressed: () async {
+        //delete road
+        await controller.removeLastRoad();
+        if (destination != null) await controller.removeMarker(destination!);
+        goToLocation();
+        setState(() {
+          pickerStage = PositionPicker.p0;
+        });
+      },
+      child: const Icon(Icons.close),
+    );
+  }
+
+  Future<void> goToLocation() async {
+    final position = await determinePosition();
+    final point =
+        GeoPoint(latitude: position.latitude, longitude: position.longitude);
     await controller.goToLocation(point);
     await controller.setZoom(zoomLevel: 17);
-    await controller.removeMarker(point);
+    if (lastUserPoint != null) await controller.removeMarker(lastUserPoint!);
+    lastUserPoint = point;
     await controller.addMarker(
       point,
       markerIcon: MarkerIcon(
@@ -232,6 +253,11 @@ class _TheMapState extends State<TheMap> {
       ),
     );
   }
+}
+
+Future<GeoPoint> userLocation() async {
+  final position = await determinePosition();
+  return GeoPoint(latitude: position.latitude, longitude: position.longitude);
 }
 
 enum PositionPicker { p0, start, end }

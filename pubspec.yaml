@@ -41,6 +41,7 @@ dependencies:
   geolocator: ^9.0.2
   flutter_osm_plugin: ^0.40.3+2
   map_controller: ^0.9.0
+  get: ^4.6.5
 
 dev_dependencies:
   flutter_test:
